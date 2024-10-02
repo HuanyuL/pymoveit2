@@ -13,7 +13,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
 from pymoveit2 import MoveIt2, MoveIt2State
-from pymoveit2.robots import panda
+from pymoveit2.robots import ur
 
 
 def main():
@@ -47,15 +47,13 @@ def main():
     # Create MoveIt 2 interface
     moveit2 = MoveIt2(
         node=node,
-        joint_names=panda.joint_names(),
-        base_link_name=panda.base_link_name(),
-        end_effector_name=panda.end_effector_name(),
-        group_name=panda.MOVE_GROUP_ARM,
+        joint_names=ur.joint_names(),
+        base_link_name=ur.base_link_name(),
+        end_effector_name=ur.end_effector_name(),
+        group_name=ur.MOVE_GROUP_ARM,
         callback_group=callback_group,
     )
-    moveit2.planner_id = (
-        node.get_parameter("planner_id").get_parameter_value().string_value
-    )
+    moveit2.planner_id = node.get_parameter("planner_id").get_parameter_value().string_value
 
     # Spin the node in background thread(s) and wait a bit for initialization
     executor = rclpy.executors.MultiThreadedExecutor(2)
@@ -69,13 +67,9 @@ def main():
     moveit2.max_acceleration = 0.5
 
     # Get parameters
-    joint_positions = (
-        node.get_parameter("joint_positions").get_parameter_value().double_array_value
-    )
+    joint_positions = node.get_parameter("joint_positions").get_parameter_value().double_array_value
     synchronous = node.get_parameter("synchronous").get_parameter_value().bool_value
-    cancel_after_secs = (
-        node.get_parameter("cancel_after_secs").get_parameter_value().double_value
-    )
+    cancel_after_secs = node.get_parameter("cancel_after_secs").get_parameter_value().double_value
 
     # Move to joint configuration
     node.get_logger().info(f"Moving to {{joint_positions: {list(joint_positions)}}}")

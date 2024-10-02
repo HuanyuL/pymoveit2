@@ -69,7 +69,7 @@ class MoveIt2:
         joint_names: List[str],
         base_link_name: str,
         end_effector_name: str,
-        group_name: str = "arm",
+        group_name: str = "ur_manipulator",
         execute_via_moveit: bool = False,
         ignore_new_calls_while_executing: bool = False,
         callback_group: Optional[CallbackGroup] = None,
@@ -256,16 +256,12 @@ class MoveIt2:
             callback_group=callback_group,
         )
 
-        self.__collision_object_publisher = self._node.create_publisher(
-            CollisionObject, "/collision_object", 10
-        )
+        self.__collision_object_publisher = self._node.create_publisher(CollisionObject, "/collision_object", 10)
         self.__attached_collision_object_publisher = self._node.create_publisher(
             AttachedCollisionObject, "/attached_collision_object", 10
         )
 
-        self.__cancellation_pub = self._node.create_publisher(
-            String, "/trajectory_execution_event", 1
-        )
+        self.__cancellation_pub = self._node.create_publisher(String, "/trajectory_execution_event", 1)
 
         self.__joint_state_mutex = threading.Lock()
         self.__joint_state = None
@@ -337,9 +333,7 @@ class MoveIt2:
         self,
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         target_link: Optional[str] = None,
         frame_id: Optional[str] = None,
         tolerance_position: float = 0.001,
@@ -361,17 +355,13 @@ class MoveIt2:
             pose_stamped = PoseStamped(
                 header=Header(
                     stamp=self._node.get_clock().now().to_msg(),
-                    frame_id=(
-                        frame_id if frame_id is not None else self.__base_link_name
-                    ),
+                    frame_id=(frame_id if frame_id is not None else self.__base_link_name),
                 ),
                 pose=pose,
             )
         else:
             if not isinstance(position, Point):
-                position = Point(
-                    x=float(position[0]), y=float(position[1]), z=float(position[2])
-                )
+                position = Point(x=float(position[0]), y=float(position[1]), z=float(position[2]))
             if not isinstance(quat_xyzw, Quaternion):
                 quat_xyzw = Quaternion(
                     x=float(quat_xyzw[0]),
@@ -382,20 +372,14 @@ class MoveIt2:
             pose_stamped = PoseStamped(
                 header=Header(
                     stamp=self._node.get_clock().now().to_msg(),
-                    frame_id=(
-                        frame_id if frame_id is not None else self.__base_link_name
-                    ),
+                    frame_id=(frame_id if frame_id is not None else self.__base_link_name),
                 ),
                 pose=Pose(position=position, orientation=quat_xyzw),
             )
 
         if self.__use_move_group_action and not cartesian:
-            if self.__ignore_new_calls_while_executing and (
-                self.__is_motion_requested or self.__is_executing
-            ):
-                self._node.get_logger().warn(
-                    "Controller is already following a trajectory. Skipping motion."
-                )
+            if self.__ignore_new_calls_while_executing and (self.__is_motion_requested or self.__is_executing):
+                self._node.get_logger().warn("Controller is already following a trajectory. Skipping motion.")
                 return
 
             # Set goal
@@ -411,9 +395,7 @@ class MoveIt2:
             )
             # Define starting state as the current state
             if self.joint_state is not None:
-                self.__move_action_goal.request.start_state.joint_state = (
-                    self.joint_state
-                )
+                self.__move_action_goal.request.start_state.joint_state = self.joint_state
             # Send to goal to the server (async) - both planning and execution
             self._send_goal_async_move_action()
             # Clear all previous goal constrains
@@ -451,12 +433,8 @@ class MoveIt2:
         """
 
         if self.__use_move_group_action:
-            if self.__ignore_new_calls_while_executing and (
-                self.__is_motion_requested or self.__is_executing
-            ):
-                self._node.get_logger().warn(
-                    "Controller is already following a trajectory. Skipping motion."
-                )
+            if self.__ignore_new_calls_while_executing and (self.__is_motion_requested or self.__is_executing):
+                self._node.get_logger().warn("Controller is already following a trajectory. Skipping motion.")
                 return
 
             # Set goal
@@ -468,9 +446,7 @@ class MoveIt2:
             )
             # Define starting state as the current state
             if self.joint_state is not None:
-                self.__move_action_goal.request.start_state.joint_state = (
-                    self.joint_state
-                )
+                self.__move_action_goal.request.start_state.joint_state = self.joint_state
             # Send to goal to the server (async) - both planning and execution
             self._send_goal_async_move_action()
             # Clear all previous goal constrains
@@ -492,9 +468,7 @@ class MoveIt2:
         self,
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         joint_positions: Optional[List[float]] = None,
         joint_names: Optional[List[str]] = None,
         frame_id: Optional[str] = None,
@@ -514,11 +488,7 @@ class MoveIt2:
         Call plan_async and wait on future
         """
         future = self.plan_async(
-            **{
-                key: value
-                for key, value in locals().items()
-                if key not in ["self", "cartesian_fraction_threshold"]
-            }
+            **{key: value for key, value in locals().items() if key not in ["self", "cartesian_fraction_threshold"]}
         )
 
         if future is None:
@@ -539,9 +509,7 @@ class MoveIt2:
         self,
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         joint_positions: Optional[List[float]] = None,
         joint_names: Optional[List[str]] = None,
         frame_id: Optional[str] = None,
@@ -572,9 +540,7 @@ class MoveIt2:
                 pose_stamped = PoseStamped(
                     header=Header(
                         stamp=self._node.get_clock().now().to_msg(),
-                        frame_id=(
-                            frame_id if frame_id is not None else self.__base_link_name
-                        ),
+                        frame_id=(frame_id if frame_id is not None else self.__base_link_name),
                     ),
                     pose=pose,
                 )
@@ -596,9 +562,7 @@ class MoveIt2:
         else:
             if position is not None:
                 if not isinstance(position, Point):
-                    position = Point(
-                        x=float(position[0]), y=float(position[1]), z=float(position[2])
-                    )
+                    position = Point(x=float(position[0]), y=float(position[1]), z=float(position[2]))
 
                 self.set_position_goal(
                     position=position,
@@ -636,15 +600,11 @@ class MoveIt2:
         # Define starting state for the plan (default to the current state)
         if start_joint_state is not None:
             if isinstance(start_joint_state, JointState):
-                self.__move_action_goal.request.start_state.joint_state = (
-                    start_joint_state
-                )
+                self.__move_action_goal.request.start_state.joint_state = start_joint_state
             else:
-                self.__move_action_goal.request.start_state.joint_state = (
-                    init_joint_state(
-                        joint_names=self.__joint_names,
-                        joint_positions=start_joint_state,
-                    )
+                self.__move_action_goal.request.start_state.joint_state = init_joint_state(
+                    joint_names=self.__joint_names,
+                    joint_positions=start_joint_state,
                 )
         elif self.joint_state is not None:
             self.__move_action_goal.request.start_state.joint_state = self.joint_state
@@ -653,11 +613,7 @@ class MoveIt2:
         if cartesian:
             future = self._plan_cartesian_path(
                 max_step=max_step,
-                frame_id=(
-                    pose_stamped.header.frame_id
-                    if pose_stamped is not None
-                    else frame_id
-                ),
+                frame_id=(pose_stamped.header.frame_id if pose_stamped is not None else frame_id),
             )
         else:
             # Use service
@@ -683,9 +639,7 @@ class MoveIt2:
         less than `cartesian_fraction_threshold`.
         """
         if not future.done():
-            self._node.get_logger().warn(
-                "Cannot get trajectory because future is not done."
-            )
+            self._node.get_logger().warn("Cannot get trajectory because future is not done.")
             return None
 
         res = future.result()
@@ -702,9 +656,7 @@ class MoveIt2:
                     )
                     return None
             else:
-                self._node.get_logger().warn(
-                    f"Planning failed! Error code: {res.error_code.val}."
-                )
+                self._node.get_logger().warn(f"Planning failed! Error code: {res.error_code.val}.")
                 return None
 
         # Else Kinematic
@@ -712,9 +664,7 @@ class MoveIt2:
         if MoveItErrorCodes.SUCCESS == res.error_code.val:
             return res.trajectory.joint_trajectory
         else:
-            self._node.get_logger().warn(
-                f"Planning failed! Error code: {res.error_code.val}."
-            )
+            self._node.get_logger().warn(f"Planning failed! Error code: {res.error_code.val}.")
             return None
 
     def execute(self, joint_trajectory: JointTrajectory):
@@ -722,22 +672,14 @@ class MoveIt2:
         Execute joint_trajectory by communicating directly with the controller.
         """
 
-        if self.__ignore_new_calls_while_executing and (
-            self.__is_motion_requested or self.__is_executing
-        ):
-            self._node.get_logger().warn(
-                "Controller is already following a trajectory. Skipping motion."
-            )
+        if self.__ignore_new_calls_while_executing and (self.__is_motion_requested or self.__is_executing):
+            self._node.get_logger().warn("Controller is already following a trajectory. Skipping motion.")
             return
 
-        execute_trajectory_goal = init_execute_trajectory_goal(
-            joint_trajectory=joint_trajectory
-        )
+        execute_trajectory_goal = init_execute_trajectory_goal(joint_trajectory=joint_trajectory)
 
         if execute_trajectory_goal is None:
-            self._node.get_logger().warn(
-                "Cannot execute motion because the provided/planned trajectory is invalid."
-            )
+            self._node.get_logger().warn("Cannot execute motion because the provided/planned trajectory is invalid.")
             return
 
         self._send_goal_async_execute_trajectory(goal=execute_trajectory_goal)
@@ -748,9 +690,7 @@ class MoveIt2:
         """
 
         if not self.__is_motion_requested:
-            self._node.get_logger().warn(
-                "Cannot wait until motion is executed (no motion is in progress)."
-            )
+            self._node.get_logger().warn("Cannot wait until motion is executed (no motion is in progress).")
             return False
 
         while self.__is_motion_requested or self.__is_executing:
@@ -758,9 +698,7 @@ class MoveIt2:
 
         return self.motion_suceeded
 
-    def reset_controller(
-        self, joint_state: Union[JointState, List[float]], sync: bool = True
-    ):
+    def reset_controller(self, joint_state: Union[JointState, List[float]], sync: bool = True):
         """
         Reset controller to a given `joint_state` by sending a dummy joint trajectory.
         This is useful for simulated robots that allow instantaneous reset of joints.
@@ -772,9 +710,7 @@ class MoveIt2:
                 joint_positions=joint_state,
             )
         joint_trajectory = init_dummy_joint_trajectory_from_state(joint_state)
-        execute_trajectory_goal = init_execute_trajectory_goal(
-            joint_trajectory=joint_trajectory
-        )
+        execute_trajectory_goal = init_execute_trajectory_goal(joint_trajectory=joint_trajectory)
 
         self._send_goal_async_execute_trajectory(
             goal=execute_trajectory_goal,
@@ -785,9 +721,7 @@ class MoveIt2:
         self,
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         frame_id: Optional[str] = None,
         target_link: Optional[str] = None,
         tolerance_position: float = 0.001,
@@ -800,9 +734,7 @@ class MoveIt2:
         """
 
         if (pose is None) and (position is None or quat_xyzw is None):
-            raise ValueError(
-                "Either `pose` or `position` and `quat_xyzw` must be specified!"
-            )
+            raise ValueError("Either `pose` or `position` and `quat_xyzw` must be specified!")
 
         if isinstance(pose, PoseStamped):
             pose_stamped = pose
@@ -810,17 +742,13 @@ class MoveIt2:
             pose_stamped = PoseStamped(
                 header=Header(
                     stamp=self._node.get_clock().now().to_msg(),
-                    frame_id=(
-                        frame_id if frame_id is not None else self.__base_link_name
-                    ),
+                    frame_id=(frame_id if frame_id is not None else self.__base_link_name),
                 ),
                 pose=pose,
             )
         else:
             if not isinstance(position, Point):
-                position = Point(
-                    x=float(position[0]), y=float(position[1]), z=float(position[2])
-                )
+                position = Point(x=float(position[0]), y=float(position[1]), z=float(position[2]))
             if not isinstance(quat_xyzw, Quaternion):
                 quat_xyzw = Quaternion(
                     x=float(quat_xyzw[0]),
@@ -831,9 +759,7 @@ class MoveIt2:
             pose_stamped = PoseStamped(
                 header=Header(
                     stamp=self._node.get_clock().now().to_msg(),
-                    frame_id=(
-                        frame_id if frame_id is not None else self.__base_link_name
-                    ),
+                    frame_id=(frame_id if frame_id is not None else self.__base_link_name),
                 ),
                 pose=Pose(position=position, orientation=quat_xyzw),
             )
@@ -871,27 +797,17 @@ class MoveIt2:
         constraint = PositionConstraint()
 
         # Define reference frame and target link
-        constraint.header.frame_id = (
-            frame_id if frame_id is not None else self.__base_link_name
-        )
-        constraint.link_name = (
-            target_link if target_link is not None else self.__end_effector_name
-        )
+        constraint.header.frame_id = frame_id if frame_id is not None else self.__base_link_name
+        constraint.link_name = target_link if target_link is not None else self.__end_effector_name
 
         # Define target position
         constraint.constraint_region.primitive_poses.append(Pose())
         if isinstance(position, Point):
             constraint.constraint_region.primitive_poses[0].position = position
         else:
-            constraint.constraint_region.primitive_poses[0].position.x = float(
-                position[0]
-            )
-            constraint.constraint_region.primitive_poses[0].position.y = float(
-                position[1]
-            )
-            constraint.constraint_region.primitive_poses[0].position.z = float(
-                position[2]
-            )
+            constraint.constraint_region.primitive_poses[0].position.x = float(position[0])
+            constraint.constraint_region.primitive_poses[0].position.y = float(position[1])
+            constraint.constraint_region.primitive_poses[0].position.z = float(position[2])
 
         # Define goal region as a sphere with radius equal to the tolerance
         constraint.constraint_region.primitives.append(SolidPrimitive())
@@ -926,9 +842,7 @@ class MoveIt2:
         )
 
         # Append to other constraints
-        self.__move_action_goal.request.goal_constraints[
-            -1
-        ].position_constraints.append(constraint)
+        self.__move_action_goal.request.goal_constraints[-1].position_constraints.append(constraint)
 
     def create_orientation_constraint(
         self,
@@ -949,12 +863,8 @@ class MoveIt2:
         constraint = OrientationConstraint()
 
         # Define reference frame and target link
-        constraint.header.frame_id = (
-            frame_id if frame_id is not None else self.__base_link_name
-        )
-        constraint.link_name = (
-            target_link if target_link is not None else self.__end_effector_name
-        )
+        constraint.header.frame_id = frame_id if frame_id is not None else self.__base_link_name
+        constraint.link_name = target_link if target_link is not None else self.__end_effector_name
 
         # Define target orientation
         if isinstance(quat_xyzw, Quaternion):
@@ -1007,9 +917,7 @@ class MoveIt2:
         )
 
         # Append to other constraints
-        self.__move_action_goal.request.goal_constraints[
-            -1
-        ].orientation_constraints.append(constraint)
+        self.__move_action_goal.request.goal_constraints[-1].orientation_constraints.append(constraint)
 
     def create_joint_constraints(
         self,
@@ -1072,9 +980,7 @@ class MoveIt2:
         )
 
         # Append to other constraints
-        self.__move_action_goal.request.goal_constraints[-1].joint_constraints.extend(
-            constraints
-        )
+        self.__move_action_goal.request.goal_constraints[-1].joint_constraints.extend(constraints)
 
     def clear_goal_constraints(self):
         """
@@ -1114,9 +1020,7 @@ class MoveIt2:
         )
 
         # Append to other constraints
-        self.__move_action_goal.request.path_constraints.joint_constraints.extend(
-            constraints
-        )
+        self.__move_action_goal.request.path_constraints.joint_constraints.extend(constraints)
 
     def set_path_position_constraint(
         self,
@@ -1141,9 +1045,7 @@ class MoveIt2:
         )
 
         # Append to other constraints
-        self.__move_action_goal.request.path_constraints.position_constraints.append(
-            constraint
-        )
+        self.__move_action_goal.request.path_constraints.position_constraints.append(constraint)
 
     def set_path_orientation_constraint(
         self,
@@ -1170,9 +1072,7 @@ class MoveIt2:
         )
 
         # Append to other constraints
-        self.__move_action_goal.request.path_constraints.orientation_constraints.append(
-            constraint
-        )
+        self.__move_action_goal.request.path_constraints.orientation_constraints.append(constraint)
 
     def clear_path_constraints(self):
         """
@@ -1190,9 +1090,7 @@ class MoveIt2:
         """
         Call compute_fk_async and wait on future
         """
-        future = self.compute_fk_async(
-            **{key: value for key, value in locals().items() if key != "self"}
-        )
+        future = self.compute_fk_async(**{key: value for key, value in locals().items() if key != "self"})
 
         if future is None:
             return None
@@ -1214,9 +1112,7 @@ class MoveIt2:
         if the future is done and successful, else None.
         """
         if not future.done():
-            self._node.get_logger().warn(
-                "Cannot get FK result because future is not done."
-            )
+            self._node.get_logger().warn("Cannot get FK result because future is not done.")
             return None
 
         res = future.result()
@@ -1227,9 +1123,7 @@ class MoveIt2:
             else:
                 return res.pose_stamped
         else:
-            self._node.get_logger().warn(
-                f"FK computation failed! Error code: {res.error_code.val}."
-            )
+            self._node.get_logger().warn(f"FK computation failed! Error code: {res.error_code.val}.")
             return None
 
     def compute_fk_async(
@@ -1284,9 +1178,7 @@ class MoveIt2:
         """
         Call compute_ik_async and wait on future
         """
-        future = self.compute_ik_async(
-            **{key: value for key, value in locals().items() if key != "self"}
-        )
+        future = self.compute_ik_async(**{key: value for key, value in locals().items() if key != "self"})
 
         if future is None:
             return None
@@ -1307,9 +1199,7 @@ class MoveIt2:
         if the future is done and successful, else None.
         """
         if not future.done():
-            self._node.get_logger().warn(
-                "Cannot get IK result because future is not done."
-            )
+            self._node.get_logger().warn("Cannot get IK result because future is not done.")
             return None
 
         res = future.result()
@@ -1317,9 +1207,7 @@ class MoveIt2:
         if MoveItErrorCodes.SUCCESS == res.error_code.val:
             return res.solution.joint_state
         else:
-            self._node.get_logger().warn(
-                f"IK computation failed! Error code: {res.error_code.val}."
-            )
+            self._node.get_logger().warn(f"IK computation failed! Error code: {res.error_code.val}.")
             return None
 
     def compute_ik_async(
@@ -1344,42 +1232,24 @@ class MoveIt2:
         if isinstance(position, Point):
             self.__compute_ik_req.ik_request.pose_stamped.pose.position = position
         else:
-            self.__compute_ik_req.ik_request.pose_stamped.pose.position.x = float(
-                position[0]
-            )
-            self.__compute_ik_req.ik_request.pose_stamped.pose.position.y = float(
-                position[1]
-            )
-            self.__compute_ik_req.ik_request.pose_stamped.pose.position.z = float(
-                position[2]
-            )
+            self.__compute_ik_req.ik_request.pose_stamped.pose.position.x = float(position[0])
+            self.__compute_ik_req.ik_request.pose_stamped.pose.position.y = float(position[1])
+            self.__compute_ik_req.ik_request.pose_stamped.pose.position.z = float(position[2])
         if isinstance(quat_xyzw, Quaternion):
             self.__compute_ik_req.ik_request.pose_stamped.pose.orientation = quat_xyzw
         else:
-            self.__compute_ik_req.ik_request.pose_stamped.pose.orientation.x = float(
-                quat_xyzw[0]
-            )
-            self.__compute_ik_req.ik_request.pose_stamped.pose.orientation.y = float(
-                quat_xyzw[1]
-            )
-            self.__compute_ik_req.ik_request.pose_stamped.pose.orientation.z = float(
-                quat_xyzw[2]
-            )
-            self.__compute_ik_req.ik_request.pose_stamped.pose.orientation.w = float(
-                quat_xyzw[3]
-            )
+            self.__compute_ik_req.ik_request.pose_stamped.pose.orientation.x = float(quat_xyzw[0])
+            self.__compute_ik_req.ik_request.pose_stamped.pose.orientation.y = float(quat_xyzw[1])
+            self.__compute_ik_req.ik_request.pose_stamped.pose.orientation.z = float(quat_xyzw[2])
+            self.__compute_ik_req.ik_request.pose_stamped.pose.orientation.w = float(quat_xyzw[3])
 
         if start_joint_state is not None:
             if isinstance(start_joint_state, JointState):
-                self.__compute_ik_req.ik_request.robot_state.joint_state = (
-                    start_joint_state
-                )
+                self.__compute_ik_req.ik_request.robot_state.joint_state = start_joint_state
             else:
-                self.__compute_ik_req.ik_request.robot_state.joint_state = (
-                    init_joint_state(
-                        joint_names=self.__joint_names,
-                        joint_positions=start_joint_state,
-                    )
+                self.__compute_ik_req.ik_request.robot_state.joint_state = init_joint_state(
+                    joint_names=self.__joint_names,
+                    joint_positions=start_joint_state,
                 )
         elif self.joint_state is not None:
             self.__compute_ik_req.ik_request.robot_state.joint_state = self.joint_state
@@ -1390,9 +1260,7 @@ class MoveIt2:
         stamp = self._node.get_clock().now().to_msg()
         self.__compute_ik_req.ik_request.pose_stamped.header.stamp = stamp
 
-        if not self.__compute_ik_client.wait_for_service(
-            timeout_sec=wait_for_server_timeout_sec
-        ):
+        if not self.__compute_ik_client.wait_for_service(timeout_sec=wait_for_server_timeout_sec):
             self._node.get_logger().warn(
                 f"Service '{self.__compute_ik_client.srv_name}' is not yet available. Better luck next time!"
             )
@@ -1427,9 +1295,7 @@ class MoveIt2:
         dimensions: Tuple[float, float, float],
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         frame_id: Optional[str] = None,
         operation: int = CollisionObject.ADD,
     ):
@@ -1444,9 +1310,7 @@ class MoveIt2:
         """
 
         if (pose is None) and (position is None or quat_xyzw is None):
-            raise ValueError(
-                "Either `pose` or `position` and `quat_xyzw` must be specified!"
-            )
+            raise ValueError("Either `pose` or `position` and `quat_xyzw` must be specified!")
 
         if isinstance(pose, PoseStamped):
             pose_stamped = pose
@@ -1454,17 +1318,13 @@ class MoveIt2:
             pose_stamped = PoseStamped(
                 header=Header(
                     stamp=self._node.get_clock().now().to_msg(),
-                    frame_id=(
-                        frame_id if frame_id is not None else self.__base_link_name
-                    ),
+                    frame_id=(frame_id if frame_id is not None else self.__base_link_name),
                 ),
                 pose=pose,
             )
         else:
             if not isinstance(position, Point):
-                position = Point(
-                    x=float(position[0]), y=float(position[1]), z=float(position[2])
-                )
+                position = Point(x=float(position[0]), y=float(position[1]), z=float(position[2]))
             if not isinstance(quat_xyzw, Quaternion):
                 quat_xyzw = Quaternion(
                     x=float(quat_xyzw[0]),
@@ -1475,9 +1335,7 @@ class MoveIt2:
             pose_stamped = PoseStamped(
                 header=Header(
                     stamp=self._node.get_clock().now().to_msg(),
-                    frame_id=(
-                        frame_id if frame_id is not None else self.__base_link_name
-                    ),
+                    frame_id=(frame_id if frame_id is not None else self.__base_link_name),
                 ),
                 pose=Pose(position=position, orientation=quat_xyzw),
             )
@@ -1489,9 +1347,7 @@ class MoveIt2:
             pose=pose_stamped.pose,
         )
 
-        msg.primitives.append(
-            SolidPrimitive(type=primitive_type, dimensions=dimensions)
-        )
+        msg.primitives.append(SolidPrimitive(type=primitive_type, dimensions=dimensions))
 
         self.__collision_object_publisher.publish(msg)
 
@@ -1501,9 +1357,7 @@ class MoveIt2:
         size: Tuple[float, float, float],
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         frame_id: Optional[str] = None,
         operation: int = CollisionObject.ADD,
     ):
@@ -1530,9 +1384,7 @@ class MoveIt2:
         radius: float,
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         frame_id: Optional[str] = None,
         operation: int = CollisionObject.ADD,
     ):
@@ -1563,9 +1415,7 @@ class MoveIt2:
         radius: float,
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         frame_id: Optional[str] = None,
         operation: int = CollisionObject.ADD,
     ):
@@ -1591,9 +1441,7 @@ class MoveIt2:
         radius: float,
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         frame_id: Optional[str] = None,
         operation: int = CollisionObject.ADD,
     ):
@@ -1618,9 +1466,7 @@ class MoveIt2:
         id: str,
         pose: Optional[Union[PoseStamped, Pose]] = None,
         position: Optional[Union[Point, Tuple[float, float, float]]] = None,
-        quat_xyzw: Optional[
-            Union[Quaternion, Tuple[float, float, float, float]]
-        ] = None,
+        quat_xyzw: Optional[Union[Quaternion, Tuple[float, float, float, float]]] = None,
         frame_id: Optional[str] = None,
         operation: int = CollisionObject.ADD,
         scale: Union[float, Tuple[float, float, float]] = 1.0,
@@ -1643,12 +1489,8 @@ class MoveIt2:
 
         # Check the parameters
         if (pose is None) and (position is None or quat_xyzw is None):
-            raise ValueError(
-                "Either `pose` or `position` and `quat_xyzw` must be specified!"
-            )
-        if (filepath is None and mesh is None) or (
-            filepath is not None and mesh is not None
-        ):
+            raise ValueError("Either `pose` or `position` and `quat_xyzw` must be specified!")
+        if (filepath is None and mesh is None) or (filepath is not None and mesh is not None):
             raise ValueError("Exactly one of `filepath` or `mesh` must be specified!")
         if mesh is not None and not isinstance(mesh, trimesh.Trimesh):
             raise ValueError("`mesh` must be an instance of `trimesh.Trimesh`!")
@@ -1659,17 +1501,13 @@ class MoveIt2:
             pose_stamped = PoseStamped(
                 header=Header(
                     stamp=self._node.get_clock().now().to_msg(),
-                    frame_id=(
-                        frame_id if frame_id is not None else self.__base_link_name
-                    ),
+                    frame_id=(frame_id if frame_id is not None else self.__base_link_name),
                 ),
                 pose=pose,
             )
         else:
             if not isinstance(position, Point):
-                position = Point(
-                    x=float(position[0]), y=float(position[1]), z=float(position[2])
-                )
+                position = Point(x=float(position[0]), y=float(position[1]), z=float(position[2]))
             if not isinstance(quat_xyzw, Quaternion):
                 quat_xyzw = Quaternion(
                     x=float(quat_xyzw[0]),
@@ -1680,9 +1518,7 @@ class MoveIt2:
             pose_stamped = PoseStamped(
                 header=Header(
                     stamp=self._node.get_clock().now().to_msg(),
-                    frame_id=(
-                        frame_id if frame_id is not None else self.__base_link_name
-                    ),
+                    frame_id=(frame_id if frame_id is not None else self.__base_link_name),
                 ),
                 pose=Pose(position=position, orientation=quat_xyzw),
             )
@@ -1713,9 +1549,7 @@ class MoveIt2:
         msg.meshes.append(
             Mesh(
                 triangles=[MeshTriangle(vertex_indices=face) for face in mesh.faces],
-                vertices=[
-                    Point(x=vert[0], y=vert[1], z=vert[2]) for vert in mesh.vertices
-                ],
+                vertices=[Point(x=vert[0], y=vert[1], z=vert[2]) for vert in mesh.vertices],
             )
         )
 
@@ -1754,9 +1588,7 @@ class MoveIt2:
         if link_name is None:
             link_name = self.__end_effector_name
 
-        msg = AttachedCollisionObject(
-            object=CollisionObject(id=id, operation=CollisionObject.ADD)
-        )
+        msg = AttachedCollisionObject(object=CollisionObject(id=id, operation=CollisionObject.ADD))
         msg.link_name = link_name
         msg.touch_links = touch_links
         msg.weight = weight
@@ -1768,9 +1600,7 @@ class MoveIt2:
         Detach collision object from the robot.
         """
 
-        msg = AttachedCollisionObject(
-            object=CollisionObject(id=id, operation=CollisionObject.REMOVE)
-        )
+        msg = AttachedCollisionObject(object=CollisionObject(id=id, operation=CollisionObject.REMOVE))
         self.__attached_collision_object_publisher.publish(msg)
 
     def detach_all_collision_objects(self):
@@ -1778,9 +1608,7 @@ class MoveIt2:
         Detach collision object from the robot.
         """
 
-        msg = AttachedCollisionObject(
-            object=CollisionObject(operation=CollisionObject.REMOVE)
-        )
+        msg = AttachedCollisionObject(object=CollisionObject(operation=CollisionObject.REMOVE))
         self.__attached_collision_object_publisher.publish(msg)
 
     def move_collision(
@@ -1797,9 +1625,7 @@ class MoveIt2:
         msg = CollisionObject()
 
         if not isinstance(position, Point):
-            position = Point(
-                x=float(position[0]), y=float(position[1]), z=float(position[2])
-            )
+            position = Point(x=float(position[0]), y=float(position[1]), z=float(position[2]))
         if not isinstance(quat_xyzw, Quaternion):
             quat_xyzw = Quaternion(
                 x=float(quat_xyzw[0]),
@@ -1814,9 +1640,7 @@ class MoveIt2:
         msg.pose = pose
         msg.id = id
         msg.operation = CollisionObject.MOVE
-        msg.header.frame_id = (
-            frame_id if frame_id is not None else self.__base_link_name
-        )
+        msg.header.frame_id = frame_id if frame_id is not None else self.__base_link_name
         msg.header.stamp = self._node.get_clock().now().to_msg()
 
         self.__collision_object_publisher.publish(msg)
@@ -1832,9 +1656,7 @@ class MoveIt2:
                 f"Service '{self._get_planning_scene_service.srv_name}' is not yet available. Better luck next time!"
             )
             return False
-        self.__planning_scene = self._get_planning_scene_service.call(
-            GetPlanningScene.Request()
-        ).scene
+        self.__planning_scene = self._get_planning_scene_service.call(GetPlanningScene.Request()).scene
         return True
 
     def allow_collisions(self, id: str, allow: bool) -> Optional[Future]:
@@ -1882,9 +1704,7 @@ class MoveIt2:
                 f"Service '{self._apply_planning_scene_service.srv_name}' is not yet available. Better luck next time!"
             )
             return None
-        return self._apply_planning_scene_service.call_async(
-            ApplyPlanningScene.Request(scene=self.__planning_scene)
-        )
+        return self._apply_planning_scene_service.call_async(ApplyPlanningScene.Request(scene=self.__planning_scene))
 
     def process_allow_collision_future(self, future: Future) -> bool:
         """
@@ -1899,9 +1719,7 @@ class MoveIt2:
 
         # If it failed, restore the old planning scene
         if not resp.success:
-            self.__planning_scene.allowed_collision_matrix = (
-                self.__old_allowed_collision_matrix
-            )
+            self.__planning_scene.allowed_collision_matrix = self.__old_allowed_collision_matrix
 
         return resp.success
 
@@ -1926,9 +1744,7 @@ class MoveIt2:
                 f"Service '{self._apply_planning_scene_service.srv_name}' is not yet available. Better luck next time!"
             )
             return None
-        return self._apply_planning_scene_service.call_async(
-            ApplyPlanningScene.Request(scene=self.__planning_scene)
-        )
+        return self._apply_planning_scene_service.call_async(ApplyPlanningScene.Request(scene=self.__planning_scene))
 
     def cancel_clear_all_collision_objects_future(self, future: Future):
         """
@@ -1966,17 +1782,11 @@ class MoveIt2:
 
     def _plan_kinematic_path(self) -> Optional[Future]:
         # Reuse request from move action goal
-        self.__kinematic_path_request.motion_plan_request = (
-            self.__move_action_goal.request
-        )
+        self.__kinematic_path_request.motion_plan_request = self.__move_action_goal.request
 
         stamp = self._node.get_clock().now().to_msg()
-        self.__kinematic_path_request.motion_plan_request.workspace_parameters.header.stamp = (
-            stamp
-        )
-        for (
-            constraints
-        ) in self.__kinematic_path_request.motion_plan_request.goal_constraints:
+        self.__kinematic_path_request.motion_plan_request.workspace_parameters.header.stamp = stamp
+        for constraints in self.__kinematic_path_request.motion_plan_request.goal_constraints:
             for position_constraint in constraints.position_constraints:
                 position_constraint.header.stamp = stamp
             for orientation_constraint in constraints.orientation_constraints:
@@ -1988,9 +1798,7 @@ class MoveIt2:
             )
             return None
 
-        return self._plan_kinematic_path_service.call_async(
-            self.__kinematic_path_request
-        )
+        return self._plan_kinematic_path_service.call_async(self.__kinematic_path_request)
 
     def _plan_cartesian_path(
         self,
@@ -1998,9 +1806,7 @@ class MoveIt2:
         frame_id: Optional[str] = None,
     ) -> Optional[Future]:
         # Reuse request from move action goal
-        self.__cartesian_path_request.start_state = (
-            self.__move_action_goal.request.start_state
-        )
+        self.__cartesian_path_request.start_state = self.__move_action_goal.request.start_state
 
         # The below attributes were introduced in Iron and do not exist in Humble.
         if hasattr(self.__cartesian_path_request, "max_velocity_scaling_factor"):
@@ -2012,29 +1818,19 @@ class MoveIt2:
                 self.__move_action_goal.request.max_acceleration_scaling_factor
             )
 
-        self.__cartesian_path_request.group_name = (
-            self.__move_action_goal.request.group_name
-        )
+        self.__cartesian_path_request.group_name = self.__move_action_goal.request.group_name
         self.__cartesian_path_request.link_name = self.__end_effector_name
         self.__cartesian_path_request.max_step = max_step
 
-        self.__cartesian_path_request.header.frame_id = (
-            frame_id if frame_id is not None else self.__base_link_name
-        )
+        self.__cartesian_path_request.header.frame_id = frame_id if frame_id is not None else self.__base_link_name
 
         stamp = self._node.get_clock().now().to_msg()
         self.__cartesian_path_request.header.stamp = stamp
 
-        self.__cartesian_path_request.path_constraints = (
-            self.__move_action_goal.request.path_constraints
-        )
-        for (
-            position_constraint
-        ) in self.__cartesian_path_request.path_constraints.position_constraints:
+        self.__cartesian_path_request.path_constraints = self.__move_action_goal.request.path_constraints
+        for position_constraint in self.__cartesian_path_request.path_constraints.position_constraints:
             position_constraint.header.stamp = stamp
-        for (
-            orientation_constraint
-        ) in self.__cartesian_path_request.path_constraints.orientation_constraints:
+        for orientation_constraint in self.__cartesian_path_request.path_constraints.orientation_constraints:
             orientation_constraint.header.stamp = stamp
         # no header in joint_constraint message type
 
@@ -2046,9 +1842,7 @@ class MoveIt2:
             .position
         )
         target_pose.orientation = (
-            self.__move_action_goal.request.goal_constraints[-1]
-            .orientation_constraints[-1]
-            .orientation
+            self.__move_action_goal.request.goal_constraints[-1].orientation_constraints[-1].orientation
         )
 
         self.__cartesian_path_request.waypoints = [target_pose]
@@ -2059,9 +1853,7 @@ class MoveIt2:
             )
             return None
 
-        return self._plan_cartesian_path_service.call_async(
-            self.__cartesian_path_request
-        )
+        return self._plan_cartesian_path_service.call_async(self.__cartesian_path_request)
 
     def _send_goal_async_move_action(self):
         self.__execution_mutex.acquire()
@@ -2080,9 +1872,7 @@ class MoveIt2:
             feedback_callback=None,
         )
 
-        self.__send_goal_future_move_action.add_done_callback(
-            self.__response_callback_move_action
-        )
+        self.__send_goal_future_move_action.add_done_callback(self.__response_callback_move_action)
 
         self.__execution_mutex.release()
 
@@ -2090,9 +1880,7 @@ class MoveIt2:
         self.__execution_mutex.acquire()
         goal_handle = response.result()
         if not goal_handle.accepted:
-            self._node.get_logger().warn(
-                f"Action '{self.__move_action_client._action_name}' was rejected."
-            )
+            self._node.get_logger().warn(f"Action '{self.__move_action_client._action_name}' was rejected.")
             self.__is_motion_requested = False
             return
 
@@ -2101,9 +1889,7 @@ class MoveIt2:
         self.__is_motion_requested = False
 
         self.__get_result_future_move_action = goal_handle.get_result_async()
-        self.__get_result_future_move_action.add_done_callback(
-            self.__result_callback_move_action
-        )
+        self.__get_result_future_move_action.add_done_callback(self.__result_callback_move_action)
         self.__execution_mutex.release()
 
     def __result_callback_move_action(self, res):
@@ -2137,16 +1923,12 @@ class MoveIt2:
 
         self.__last_error_code = None
         self.__is_motion_requested = True
-        self.__send_goal_future_execute_trajectory = (
-            self._execute_trajectory_action_client.send_goal_async(
-                goal=goal,
-                feedback_callback=None,
-            )
+        self.__send_goal_future_execute_trajectory = self._execute_trajectory_action_client.send_goal_async(
+            goal=goal,
+            feedback_callback=None,
         )
 
-        self.__send_goal_future_execute_trajectory.add_done_callback(
-            self.__response_callback_execute_trajectory
-        )
+        self.__send_goal_future_execute_trajectory.add_done_callback(self.__response_callback_execute_trajectory)
         self.__execution_mutex.release()
 
     def __response_callback_execute_trajectory(self, response):
@@ -2164,9 +1946,7 @@ class MoveIt2:
         self.__is_motion_requested = False
 
         self.__get_result_future_execute_trajectory = goal_handle.get_result_async()
-        self.__get_result_future_execute_trajectory.add_done_callback(
-            self.__result_callback_execute_trajectory
-        )
+        self.__get_result_future_execute_trajectory.add_done_callback(self.__result_callback_execute_trajectory)
         self.__execution_mutex.release()
 
     def __response_callback_with_event_set_execute_trajectory(self, response):
@@ -2189,9 +1969,7 @@ class MoveIt2:
         self.__execution_mutex.release()
 
     @classmethod
-    def __init_move_action_goal(
-        cls, frame_id: str, group_name: str, end_effector: str
-    ) -> MoveGroup.Goal:
+    def __init_move_action_goal(cls, frame_id: str, group_name: str, end_effector: str) -> MoveGroup.Goal:
         move_action_goal = MoveGroup.Goal()
         move_action_goal.request.workspace_parameters.header.frame_id = frame_id
         # move_action_goal.request.workspace_parameters.header.stamp = "Set during request"
@@ -2264,9 +2042,7 @@ class MoveIt2:
         # self.__compute_ik_req.ik_request.constraints = "Set during request OR Ignored"
         self.__compute_ik_req.ik_request.avoid_collisions = True
         # self.__compute_ik_req.ik_request.ik_link_name = "Ignored"
-        self.__compute_ik_req.ik_request.pose_stamped.header.frame_id = (
-            self.__base_link_name
-        )
+        self.__compute_ik_req.ik_request.pose_stamped.header.frame_id = self.__base_link_name
         # self.__compute_ik_req.ik_request.pose_stamped.header.stamp = "Set during request"
         # self.__compute_ik_req.ik_request.pose_stamped.pose = "Set during request"
         # self.__compute_ik_req.ik_request.ik_link_names = "Ignored"
@@ -2395,15 +2171,9 @@ def init_joint_state(
     joint_state = JointState()
 
     joint_state.name = joint_names
-    joint_state.position = (
-        joint_positions if joint_positions is not None else [0.0] * len(joint_names)
-    )
-    joint_state.velocity = (
-        joint_velocities if joint_velocities is not None else [0.0] * len(joint_names)
-    )
-    joint_state.effort = (
-        joint_effort if joint_effort is not None else [0.0] * len(joint_names)
-    )
+    joint_state.position = joint_positions if joint_positions is not None else [0.0] * len(joint_names)
+    joint_state.velocity = joint_velocities if joint_velocities is not None else [0.0] * len(joint_names)
+    joint_state.effort = joint_effort if joint_effort is not None else [0.0] * len(joint_names)
 
     return joint_state
 
