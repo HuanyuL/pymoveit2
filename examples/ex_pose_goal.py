@@ -13,7 +13,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
 from pymoveit2 import MoveIt2, MoveIt2State
-from pymoveit2.robots import panda
+from pymoveit2.robots import ur
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
     # If non-positive, don't cancel. Only used if synchronous is False
     node.declare_parameter("cancel_after_secs", 0.0)
     # Planner ID
-    node.declare_parameter("planner_id", "RRTConnectkConfigDefault")
+    node.declare_parameter("planner_id", "PTP")
     # Declare parameters for cartesian planning
     node.declare_parameter("cartesian", False)
     node.declare_parameter("cartesian_max_step", 0.0025)
@@ -43,15 +43,13 @@ def main():
     # Create MoveIt 2 interface
     moveit2 = MoveIt2(
         node=node,
-        joint_names=panda.joint_names(),
-        base_link_name=panda.base_link_name(),
-        end_effector_name=panda.end_effector_name(),
-        group_name=panda.MOVE_GROUP_ARM,
+        joint_names=ur.joint_names(),
+        base_link_name=ur.base_link_name(),
+        end_effector_name=ur.end_effector_name(),
+        group_name=ur.MOVE_GROUP_ARM,
         callback_group=callback_group,
     )
-    moveit2.planner_id = (
-        node.get_parameter("planner_id").get_parameter_value().string_value
-    )
+    moveit2.planner_id = node.get_parameter("planner_id").get_parameter_value().string_value
 
     # Spin the node in background thread(s) and wait a bit for initialization
     executor = rclpy.executors.MultiThreadedExecutor(2)
@@ -68,37 +66,19 @@ def main():
     position = node.get_parameter("position").get_parameter_value().double_array_value
     quat_xyzw = node.get_parameter("quat_xyzw").get_parameter_value().double_array_value
     synchronous = node.get_parameter("synchronous").get_parameter_value().bool_value
-    cancel_after_secs = (
-        node.get_parameter("cancel_after_secs").get_parameter_value().double_value
-    )
+    cancel_after_secs = node.get_parameter("cancel_after_secs").get_parameter_value().double_value
     cartesian = node.get_parameter("cartesian").get_parameter_value().bool_value
-    cartesian_max_step = (
-        node.get_parameter("cartesian_max_step").get_parameter_value().double_value
-    )
-    cartesian_fraction_threshold = (
-        node.get_parameter("cartesian_fraction_threshold")
-        .get_parameter_value()
-        .double_value
-    )
-    cartesian_jump_threshold = (
-        node.get_parameter("cartesian_jump_threshold")
-        .get_parameter_value()
-        .double_value
-    )
-    cartesian_avoid_collisions = (
-        node.get_parameter("cartesian_avoid_collisions")
-        .get_parameter_value()
-        .bool_value
-    )
+    cartesian_max_step = node.get_parameter("cartesian_max_step").get_parameter_value().double_value
+    cartesian_fraction_threshold = node.get_parameter("cartesian_fraction_threshold").get_parameter_value().double_value
+    cartesian_jump_threshold = node.get_parameter("cartesian_jump_threshold").get_parameter_value().double_value
+    cartesian_avoid_collisions = node.get_parameter("cartesian_avoid_collisions").get_parameter_value().bool_value
 
     # Set parameters for cartesian planning
     moveit2.cartesian_avoid_collisions = cartesian_avoid_collisions
     moveit2.cartesian_jump_threshold = cartesian_jump_threshold
 
     # Move to pose
-    node.get_logger().info(
-        f"Moving to {{position: {list(position)}, quat_xyzw: {list(quat_xyzw)}}}"
-    )
+    node.get_logger().info(f"Moving to {{position: {list(position)}, quat_xyzw: {list(quat_xyzw)}}}")
     moveit2.move_to_pose(
         position=position,
         quat_xyzw=quat_xyzw,
