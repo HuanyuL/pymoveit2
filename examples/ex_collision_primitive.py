@@ -14,7 +14,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
 from pymoveit2 import MoveIt2
-from pymoveit2.robots import panda
+from pymoveit2.robots import ur
 
 
 def main():
@@ -42,10 +42,10 @@ def main():
     # Create MoveIt 2 interface
     moveit2 = MoveIt2(
         node=node,
-        joint_names=panda.joint_names(),
-        base_link_name=panda.base_link_name(),
-        end_effector_name=panda.end_effector_name(),
-        group_name=panda.MOVE_GROUP_ARM,
+        joint_names=ur.joint_names(),
+        base_link_name=ur.base_link_name(),
+        end_effector_name=ur.end_effector_name(),
+        group_name=ur.MOVE_GROUP_ARM,
         callback_group=callback_group,
     )
 
@@ -61,9 +61,7 @@ def main():
     action = node.get_parameter("action").get_parameter_value().string_value
     position = node.get_parameter("position").get_parameter_value().double_array_value
     quat_xyzw = node.get_parameter("quat_xyzw").get_parameter_value().double_array_value
-    dimensions = (
-        node.get_parameter("dimensions").get_parameter_value().double_array_value
-    )
+    dimensions = node.get_parameter("dimensions").get_parameter_value().double_array_value
 
     # Use the name of the primitive shape as the ID
     object_id = shape
@@ -75,13 +73,9 @@ def main():
             f"{{position: {list(position)}, quat_xyzw: {list(quat_xyzw)}, dimensions: {list(dimensions)}}}"
         )
         if shape == "box":
-            moveit2.add_collision_box(
-                id=object_id, position=position, quat_xyzw=quat_xyzw, size=dimensions
-            )
+            moveit2.add_collision_box(id=object_id, position=position, quat_xyzw=quat_xyzw, size=dimensions)
         elif shape == "sphere":
-            moveit2.add_collision_sphere(
-                id=object_id, position=position, radius=dimensions[0]
-            )
+            moveit2.add_collision_sphere(id=object_id, position=position, radius=dimensions[0])
         elif shape == "cylinder":
             moveit2.add_collision_cylinder(
                 id=object_id,
@@ -112,9 +106,7 @@ def main():
         )
         moveit2.move_collision(id=object_id, position=position, quat_xyzw=quat_xyzw)
     else:
-        raise ValueError(
-            f"Unknown action '{action}'. Valid values are 'add', 'remove', 'move'"
-        )
+        raise ValueError(f"Unknown action '{action}'. Valid values are 'add', 'remove', 'move'")
 
     rclpy.shutdown()
     executor_thread.join()

@@ -13,7 +13,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
 from pymoveit2 import MoveIt2
-from pymoveit2.robots import panda
+from pymoveit2.robots import ur
 
 
 def main():
@@ -38,10 +38,10 @@ def main():
     # Create MoveIt 2 interface
     moveit2 = MoveIt2(
         node=node,
-        joint_names=panda.joint_names(),
-        base_link_name=panda.base_link_name(),
-        end_effector_name=panda.end_effector_name(),
-        group_name=panda.MOVE_GROUP_ARM,
+        joint_names=ur.joint_names(),
+        base_link_name=ur.base_link_name(),
+        end_effector_name=ur.end_effector_name(),
+        group_name=ur.MOVE_GROUP_ARM,
         callback_group=callback_group,
     )
 
@@ -58,9 +58,7 @@ def main():
 
     # (Dis)allow collisions
     moveit2.allow_collisions(object_id, allow)
-    node.get_logger().info(
-        f"{'Allow' if allow else 'Disallow'}ed collisions between all objects and '{object_id}'"
-    )
+    node.get_logger().info(f"{'Allow' if allow else 'Disallow'}ed collisions between all objects and '{object_id}'")
 
     rclpy.shutdown()
     executor_thread.join()

@@ -12,7 +12,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
 from pymoveit2 import MoveIt2, MoveIt2State
-from pymoveit2.robots import panda
+from pymoveit2.robots import ur
 
 
 def main():
@@ -42,10 +42,10 @@ def main():
     # Create MoveIt 2 interface
     moveit2 = MoveIt2(
         node=node,
-        joint_names=panda.joint_names(),
-        base_link_name=panda.base_link_name(),
-        end_effector_name=panda.end_effector_name(),
-        group_name=panda.MOVE_GROUP_ARM,
+        joint_names=ur.joint_names(),
+        base_link_name=ur.base_link_name(),
+        end_effector_name=ur.end_effector_name(),
+        group_name=ur.MOVE_GROUP_ARM,
         callback_group=callback_group,
     )
 
@@ -57,15 +57,11 @@ def main():
     node.create_rate(1.0).sleep()
 
     # Get parameters
-    joint_positions = (
-        node.get_parameter("joint_positions").get_parameter_value().double_array_value
-    )
+    joint_positions = node.get_parameter("joint_positions").get_parameter_value().double_array_value
     synchronous = node.get_parameter("synchronous").get_parameter_value().bool_value
 
     # Move to joint configuration
-    node.get_logger().info(
-        f"Computing FK for {{joint_positions: {list(joint_positions)}}}"
-    )
+    node.get_logger().info(f"Computing FK for {{joint_positions: {list(joint_positions)}}}")
     retval = None
     if synchronous:
         retval = moveit2.compute_fk(joint_positions)

@@ -12,7 +12,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
 from pymoveit2 import MoveIt2, MoveIt2State
-from pymoveit2.robots import panda
+from pymoveit2.robots import ur
 
 
 def main():
@@ -64,10 +64,10 @@ def main():
     # Create MoveIt 2 interface
     moveit2 = MoveIt2(
         node=node,
-        joint_names=panda.joint_names(),
-        base_link_name=panda.base_link_name(),
-        end_effector_name=panda.end_effector_name(),
-        group_name=panda.MOVE_GROUP_ARM,
+        joint_names=ur.joint_names(),
+        base_link_name=ur.base_link_name(),
+        end_effector_name=ur.end_effector_name(),
+        group_name=ur.MOVE_GROUP_ARM,
         callback_group=callback_group,
     )
 
@@ -83,41 +83,21 @@ def main():
     moveit2.max_acceleration = 0.5
 
     # Get parameters
-    initial_joint_positions = (
-        node.get_parameter("initial_joint_positions")
-        .get_parameter_value()
-        .double_array_value
-    )
-    goal_joint_positions = (
-        node.get_parameter("goal_joint_positions")
-        .get_parameter_value()
-        .double_array_value
-    )
-    use_orientation_constraint = (
-        node.get_parameter("use_orientation_constraint")
-        .get_parameter_value()
-        .bool_value
-    )
+    initial_joint_positions = node.get_parameter("initial_joint_positions").get_parameter_value().double_array_value
+    goal_joint_positions = node.get_parameter("goal_joint_positions").get_parameter_value().double_array_value
+    use_orientation_constraint = node.get_parameter("use_orientation_constraint").get_parameter_value().bool_value
     orientation_constraint_quaternion = (
-        node.get_parameter("orientation_constraint_quaternion")
-        .get_parameter_value()
-        .double_array_value
+        node.get_parameter("orientation_constraint_quaternion").get_parameter_value().double_array_value
     )
     orientation_constraint_tolerance = (
-        node.get_parameter("orientation_constraint_tolerance")
-        .get_parameter_value()
-        .double_array_value
+        node.get_parameter("orientation_constraint_tolerance").get_parameter_value().double_array_value
     )
     orientation_constraint_parameterization = (
-        node.get_parameter("orientation_constraint_parameterization")
-        .get_parameter_value()
-        .integer_value
+        node.get_parameter("orientation_constraint_parameterization").get_parameter_value().integer_value
     )
 
     # Move to initial joint configuration
-    node.get_logger().info(
-        f"Moving to {{joint_positions: {list(initial_joint_positions)}}}"
-    )
+    node.get_logger().info(f"Moving to {{joint_positions: {list(initial_joint_positions)}}}")
     moveit2.move_to_configuration(initial_joint_positions)
     moveit2.wait_until_executed()
 
@@ -131,9 +111,7 @@ def main():
         )
 
     # Move to goal joint configuration
-    node.get_logger().info(
-        f"Moving to {{joint_positions: {list(goal_joint_positions)}}}"
-    )
+    node.get_logger().info(f"Moving to {{joint_positions: {list(goal_joint_positions)}}}")
     moveit2.move_to_configuration(goal_joint_positions)
     moveit2.wait_until_executed()
 

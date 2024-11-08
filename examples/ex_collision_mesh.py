@@ -17,11 +17,9 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
 from pymoveit2 import MoveIt2
-from pymoveit2.robots import panda
+from pymoveit2.robots import ur
 
-DEFAULT_EXAMPLE_MESH = path.join(
-    path.dirname(path.realpath(__file__)), "assets", "suzanne.stl"
-)
+DEFAULT_EXAMPLE_MESH = path.join(path.dirname(path.realpath(__file__)), "assets", "suzanne.stl")
 
 
 def main():
@@ -50,10 +48,10 @@ def main():
     # Create MoveIt 2 interface
     moveit2 = MoveIt2(
         node=node,
-        joint_names=panda.joint_names(),
-        base_link_name=panda.base_link_name(),
-        end_effector_name=panda.end_effector_name(),
-        group_name=panda.MOVE_GROUP_ARM,
+        joint_names=ur.joint_names(),
+        base_link_name=ur.base_link_name(),
+        end_effector_name=ur.end_effector_name(),
+        group_name=ur.MOVE_GROUP_ARM,
         callback_group=callback_group,
     )
 
@@ -74,9 +72,7 @@ def main():
 
     # Use the default example mesh if invalid
     if not filepath:
-        node.get_logger().info(
-            f"Using the default example mesh file {DEFAULT_EXAMPLE_MESH}"
-        )
+        node.get_logger().info(f"Using the default example mesh file {DEFAULT_EXAMPLE_MESH}")
         filepath = DEFAULT_EXAMPLE_MESH
 
     # Make sure the mesh file exists
@@ -91,8 +87,7 @@ def main():
     if action == "add":
         # Add collision mesh
         node.get_logger().info(
-            f"Adding collision mesh '{filepath}' "
-            f"{{position: {list(position)}, quat_xyzw: {list(quat_xyzw)}}}"
+            f"Adding collision mesh '{filepath}' " f"{{position: {list(position)}, quat_xyzw: {list(quat_xyzw)}}}"
         )
 
         # Load the mesh if specified
@@ -121,9 +116,7 @@ def main():
         )
         moveit2.move_collision(id=object_id, position=position, quat_xyzw=quat_xyzw)
     else:
-        raise ValueError(
-            f"Unknown action '{action}'. Valid values are 'add', 'remove', 'move'"
-        )
+        raise ValueError(f"Unknown action '{action}'. Valid values are 'add', 'remove', 'move'")
 
     rclpy.shutdown()
     executor_thread.join()
