@@ -404,20 +404,33 @@ class MoveIt2:
 
         else:
             # Plan via MoveIt 2 and then execute directly with the controller
-            self.execute(
-                self.plan(
-                    position=pose_stamped.pose.position,
-                    quat_xyzw=pose_stamped.pose.orientation,
-                    frame_id=pose_stamped.header.frame_id,
-                    target_link=target_link,
-                    tolerance_position=tolerance_position,
-                    tolerance_orientation=tolerance_orientation,
-                    weight_position=weight_position,
-                    weight_orientation=weight_orientation,
-                    cartesian=cartesian,
-                    max_step=cartesian_max_step,
-                    cartesian_fraction_threshold=cartesian_fraction_threshold,
-                )
+            # self.execute(
+            #     self.plan(
+            #         position=pose_stamped.pose.position,
+            #         quat_xyzw=pose_stamped.pose.orientation,
+            #         frame_id=pose_stamped.header.frame_id,
+            #         target_link=target_link,
+            #         tolerance_position=tolerance_position,
+            #         tolerance_orientation=tolerance_orientation,
+            #         weight_position=weight_position,
+            #         weight_orientation=weight_orientation,
+            #         cartesian=cartesian,
+            #         max_step=cartesian_max_step,
+            #         cartesian_fraction_threshold=cartesian_fraction_threshold,
+            #     )
+            # )
+            return self.plan(
+                position=pose_stamped.pose.position,
+                quat_xyzw=pose_stamped.pose.orientation,
+                frame_id=pose_stamped.header.frame_id,
+                target_link=target_link,
+                tolerance_position=tolerance_position,
+                tolerance_orientation=tolerance_orientation,
+                weight_position=weight_position,
+                weight_orientation=weight_orientation,
+                cartesian=cartesian,
+                max_step=cartesian_max_step,
+                cartesian_fraction_threshold=cartesian_fraction_threshold,
             )
 
     def move_to_configuration(
@@ -455,13 +468,19 @@ class MoveIt2:
 
         else:
             # Plan via MoveIt 2 and then execute directly with the controller
-            self.execute(
-                self.plan(
-                    joint_positions=joint_positions,
-                    joint_names=joint_names,
-                    tolerance_joint_position=tolerance,
-                    weight_joint_position=weight,
-                )
+            # self.execute(
+            #     self.plan(
+            #         joint_positions=joint_positions,
+            #         joint_names=joint_names,
+            #         tolerance_joint_position=tolerance,
+            #         weight_joint_position=weight,
+            #     )
+            # )
+            return self.plan(
+                joint_positions=joint_positions,
+                joint_names=joint_names,
+                tolerance_joint_position=tolerance,
+                weight_joint_position=weight,
             )
 
     def plan(
