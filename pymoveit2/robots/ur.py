@@ -19,4 +19,4 @@ def base_link_name(prefix: str = "ur_") -> str:
 
 
 def end_effector_name(prefix: str = "ur_") -> str:
-    return prefix + "hand_tcp"
+    return "tool0"
