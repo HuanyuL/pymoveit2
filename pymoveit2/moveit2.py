@@ -17,6 +17,10 @@ from moveit_msgs.msg import (
     OrientationConstraint,
     PlanningScene,
     PositionConstraint,
+    MotionSequenceItem,
+    MotionSequenceRequest,
+    MotionSequenceResponse,
+    MotionPlanRequest,
 )
 from moveit_msgs.srv import (
     ApplyPlanningScene,
@@ -25,6 +29,7 @@ from moveit_msgs.srv import (
     GetPlanningScene,
     GetPositionFK,
     GetPositionIK,
+    GetMotionSequence,
 )
 from rclpy.action import ActionClient
 from rclpy.callback_groups import CallbackGroup
@@ -174,6 +179,20 @@ class MoveIt2:
             callback_group=callback_group,
         )
         self.__kinematic_path_request = GetMotionPlan.Request()
+
+        # Create service client for motion sequence
+        self._motion_sequence_path_service = self._node.create_client(
+            srv_type=GetMotionSequence,
+            srv_name="plan_motion_sequence",
+            qos_profile=QoSProfile(
+                durability=QoSDurabilityPolicy.VOLATILE,
+                reliability=QoSReliabilityPolicy.RELIABLE,
+                history=QoSHistoryPolicy.KEEP_LAST,
+                depth=1,
+            ),
+            callback_group=callback_group,
+        )
+        self.__sequence_path_request = GetMotionSequence.Request()
 
         # Create a separate service client for Cartesian planning
         self._plan_cartesian_path_service = self._node.create_client(
@@ -468,14 +487,6 @@ class MoveIt2:
 
         else:
             # Plan via MoveIt 2 and then execute directly with the controller
-            # self.execute(
-            #     self.plan(
-            #         joint_positions=joint_positions,
-            #         joint_names=joint_names,
-            #         tolerance_joint_position=tolerance,
-            #         weight_joint_position=weight,
-            #     )
-            # )
             return self.plan(
                 joint_positions=joint_positions,
                 joint_names=joint_names,
@@ -523,6 +534,32 @@ class MoveIt2:
             cartesian=cartesian,
             cartesian_fraction_threshold=cartesian_fraction_threshold,
         )
+
+    def plan_sequence(
+        self,
+        poses: Optional[List[Union[PoseStamped, Pose]]] = None,
+        frame_id: Optional[str] = None,
+        target_link: Optional[str] = None,
+        tolerance_position: float = 0.001,
+        tolerance_orientation: Union[float, Tuple[float, float, float]] = 0.001,
+        weight_position: float = 1.0,
+        weight_orientation: float = 1.0,
+        blends: Optional[List[float]] = None,
+    ) -> Optional[List[JointTrajectory]]:
+        """
+        Call plan_sequence_async and wait on future
+        """
+        future = self.plan_sequence_async(**{key: value for key, value in locals().items() if key not in ["self"]})
+
+        if future is None:
+            return None
+
+        # 100ms sleep
+        rate = self._node.create_rate(10)
+        while not future.done():
+            rate.sleep()
+
+        return self.get_trajectory_from_sequence(future)
 
     def plan_async(
         self,
@@ -644,6 +681,102 @@ class MoveIt2:
 
         return future
 
+    def plan_sequence_async(
+        self,
+        poses: Optional[List[Union[PoseStamped, Pose]]] = None,
+        frame_id: Optional[str] = None,
+        target_link: Optional[str] = None,
+        tolerance_position: float = 0.001,
+        tolerance_orientation: Union[float, Tuple[float, float, float]] = 0.001,
+        weight_position: float = 1.0,
+        weight_orientation: float = 1.0,
+        blends: Optional[List[float]] = None,
+    ) -> Optional[Future]:
+        """
+        Plan motion for a sequence of goals. This includes sequential positions, orientations,
+        or joint configurations. If no trajectory is found within the timeout duration,
+        `None` is returned.
+
+        Args:
+            poses: List of target poses for the end-effector.
+            positions: List of target positions as Points or tuples.
+            quats_xyzw: List of target orientations as Quaternions or xyzw tuples.
+            joint_positions_list: List of joint positions for each step in the sequence.
+            joint_names_list: List of joint names corresponding to each joint position set.
+            frame_id: Frame of reference for the target poses.
+            target_link: Link to be targeted during motion planning.
+            tolerance_position: Allowable position error.
+            tolerance_orientation: Allowable orientation error.
+            tolerance_joint_position: Allowable joint position error.
+            weight_position: Weight for position goals in planning.
+            weight_orientation: Weight for orientation goals in planning.
+            weight_joint_position: Weight for joint position goals in planning.
+            start_joint_state: Starting joint configuration.
+
+
+        Returns:
+            Future object representing the planning result.
+        """
+
+        pose_stamped_list = []
+        if poses is not None:
+            for pose in poses:
+                if isinstance(pose, PoseStamped):
+                    pose_stamped_list.append(pose)
+                elif isinstance(pose, Pose):
+                    pose_stamped_list.append(
+                        PoseStamped(
+                            header=Header(
+                                stamp=self._node.get_clock().now().to_msg(),
+                                frame_id=(frame_id if frame_id is not None else self.__base_link_name),
+                            ),
+                            pose=pose,
+                        )
+                    )
+                else:
+                    self._node.get_logger().warn("Invalid pose type in the sequence.")
+
+            motion_sequence_request = MotionSequenceRequest()
+            motion_sequence_item = MotionSequenceItem()
+
+            for pose_stamped, blend in zip(pose_stamped_list, blends):
+
+                self.set_position_goal(
+                    position=pose_stamped.pose.position,
+                    frame_id=pose_stamped.header.frame_id,
+                    target_link=target_link,
+                    tolerance=tolerance_position,
+                    weight=weight_position,
+                )
+                self.set_orientation_goal(
+                    quat_xyzw=pose_stamped.pose.orientation,
+                    frame_id=pose_stamped.header.frame_id,
+                    target_link=target_link,
+                    tolerance=tolerance_orientation,
+                    weight=weight_orientation,
+                )
+
+                req = self._construct_motion_plan_request()
+                req.start_state.joint_state = self.joint_state
+                motion_sequence_item.req = req
+                motion_sequence_item.blend_radius = blend
+                motion_sequence_request.items.append(motion_sequence_item)
+
+        # Plan trajectory asynchronously by service call
+        self.__sequence_path_request.request = motion_sequence_request
+
+        self._node.get_logger().info(f"number of items in sequence: {len(motion_sequence_request.items)}")
+        for idx, item in enumerate(motion_sequence_request.items):
+            self._node.get_logger().info(f"item {idx} blend radius: {item.blend_radius}")
+            self._node.get_logger().info(f"item {idx} request: {item.req}")
+
+        future = self._plan_sequence_kinematic_path(self.__sequence_path_request)
+
+        self.clear_goal_constraints()
+        self.clear_path_constraints()
+
+        return future
+
     def get_trajectory(
         self,
         future: Future,
@@ -682,6 +815,33 @@ class MoveIt2:
         res = res.motion_plan_response
         if MoveItErrorCodes.SUCCESS == res.error_code.val:
             return res.trajectory.joint_trajectory
+        else:
+            self._node.get_logger().warn(f"Planning failed! Error code: {res.error_code.val}.")
+            return None
+
+    def get_trajectory_from_sequence(
+        self,
+        future: Future,
+        cartesian: bool = False,
+        cartesian_fraction_threshold: float = 0.0,
+    ) -> Optional[List[JointTrajectory]]:
+        """
+        Takes in a future returned by plan_sequence and returns the trajectory if the future is done
+        and planning was successful, else None.
+
+        For cartesian plans, the plan is rejected if the fraction of the path that was completed is
+        less than `cartesian_fraction_threshold`.
+        """
+        if not future.done():
+            self._node.get_logger().warn("Cannot get trajectory because future is not done.")
+            return None
+
+        res = future.result()
+
+        # Else Kinematic
+        res = res.response
+        if MoveItErrorCodes.SUCCESS == res.error_code.val:
+            return res.plan.joint_trajectory[0].joint_trajectory
         else:
             self._node.get_logger().warn(f"Planning failed! Error code: {res.error_code.val}.")
             return None
@@ -1799,10 +1959,11 @@ class MoveIt2:
         self.__new_joint_state_available = True
         self.__joint_state_mutex.release()
 
-    def _plan_kinematic_path(self) -> Optional[Future]:
-        # Reuse request from move action goal
+    def _construct_motion_plan_request(self):
+        """
+        Construct a MotionPlanRequest object with the necessary attributes.
+        """
         self.__kinematic_path_request.motion_plan_request = self.__move_action_goal.request
-
         stamp = self._node.get_clock().now().to_msg()
         self.__kinematic_path_request.motion_plan_request.workspace_parameters.header.stamp = stamp
         for constraints in self.__kinematic_path_request.motion_plan_request.goal_constraints:
@@ -1811,6 +1972,11 @@ class MoveIt2:
             for orientation_constraint in constraints.orientation_constraints:
                 orientation_constraint.header.stamp = stamp
 
+        return self.__kinematic_path_request.motion_plan_request
+
+    def _plan_kinematic_path(self) -> Optional[Future]:
+        self._construct_motion_plan_request()
+
         if not self._plan_kinematic_path_service.service_is_ready():
             self._node.get_logger().warn(
                 f"Service '{self._plan_kinematic_path_service.srv_name}' is not yet available. Better luck next time!"
@@ -1818,6 +1984,14 @@ class MoveIt2:
             return None
 
         return self._plan_kinematic_path_service.call_async(self.__kinematic_path_request)
+
+    def _plan_sequence_kinematic_path(self, motion_sequence_request) -> Optional[Future]:
+        if not self._plan_kinematic_path_service.service_is_ready():
+            self._node.get_logger().warn(
+                f"Service '{self._plan_kinematic_path_service.srv_name}' is not yet available. Better luck next time!"
+            )
+            return None
+        return self._motion_sequence_path_service.call_async(motion_sequence_request)
 
     def _plan_cartesian_path(
         self,
@@ -2007,7 +2181,7 @@ class MoveIt2:
         move_action_goal.request.planner_id = ""
         move_action_goal.request.group_name = group_name
         move_action_goal.request.num_planning_attempts = 5
-        move_action_goal.request.allowed_planning_time = 0.5
+        move_action_goal.request.allowed_planning_time = 2.0
         move_action_goal.request.max_velocity_scaling_factor = 0.0
         move_action_goal.request.max_acceleration_scaling_factor = 0.0
         # Note: Attribute was renamed in Iron (https://github.com/ros-planning/moveit_msgs/pull/130)
