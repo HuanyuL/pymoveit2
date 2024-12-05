@@ -4,9 +4,10 @@ from enum import Enum
 from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
+import rclpy
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
-from moveit_msgs.action import ExecuteTrajectory, MoveGroup
+from moveit_msgs.action import ExecuteTrajectory, MoveGroup, MoveGroupSequence
 from moveit_msgs.msg import (
     AllowedCollisionEntry,
     AttachedCollisionObject,
@@ -18,9 +19,8 @@ from moveit_msgs.msg import (
     PlanningScene,
     PositionConstraint,
     MotionSequenceItem,
-    MotionSequenceRequest,
-    MotionSequenceResponse,
     MotionPlanRequest,
+    RobotTrajectory,
 )
 from moveit_msgs.srv import (
     ApplyPlanningScene,
@@ -29,7 +29,6 @@ from moveit_msgs.srv import (
     GetPlanningScene,
     GetPositionFK,
     GetPositionIK,
-    GetMotionSequence,
 )
 from rclpy.action import ActionClient
 from rclpy.callback_groups import CallbackGroup
@@ -74,7 +73,7 @@ class MoveIt2:
         joint_names: List[str],
         base_link_name: str,
         end_effector_name: str,
-        group_name: str = "ur_manipulator",
+        group_name: str = "arm",
         execute_via_moveit: bool = False,
         ignore_new_calls_while_executing: bool = False,
         callback_group: Optional[CallbackGroup] = None,
@@ -113,6 +112,48 @@ class MoveIt2:
             self._node.get_logger().warn(
                 "Parameter `follow_joint_trajectory_action_name` is deprecated. `MoveIt2` uses the `execute_trajectory` action instead."
             )
+
+        self.__collision_object_publisher = self._node.create_publisher(CollisionObject, "/collision_object", 10)
+        self.__attached_collision_object_publisher = self._node.create_publisher(
+            AttachedCollisionObject, "/attached_collision_object", 10
+        )
+
+        self.__cancellation_pub = self._node.create_publisher(String, "/trajectory_execution_event", 1)
+
+        self.__joint_state_mutex = threading.Lock()
+        self.__joint_state = None
+        self.__new_joint_state_available = False
+        self.__move_action_goal = self.__init_move_action_goal(
+            frame_id=base_link_name,
+            group_name=group_name,
+            end_effector=end_effector_name,
+        )
+
+        # Flag to determine whether to execute trajectories via Move Group Action, or rather by calling
+        # the separate ExecuteTrajectory action
+        # Applies to `move_to_pose()` and `move_to_configuration()`
+        self.__use_move_group_action = use_move_group_action
+
+        # Flag that determines whether a new goal can be sent while the previous one is being executed
+        self.__ignore_new_calls_while_executing = ignore_new_calls_while_executing
+
+        # Store additional variables for later use
+        self.__joint_names = joint_names
+        self.__base_link_name = base_link_name
+        self.__end_effector_name = end_effector_name
+        self.__group_name = group_name
+
+        # Internal states that monitor the current motion requests and execution
+        self.__is_motion_requested = False
+        self.__is_executing = False
+        self.motion_suceeded = False
+        self.__execution_goal_handle = None
+        self.__last_error_code = None
+        self.__wait_until_executed_rate = self._node.create_rate(1000.0)
+        self.__execution_mutex = threading.Lock()
+
+        # Event that enables waiting until async future is done
+        self.__future_done_event = threading.Event()
 
         # Create subscriber for current joint states
         self._node.create_subscription(
@@ -180,20 +221,6 @@ class MoveIt2:
         )
         self.__kinematic_path_request = GetMotionPlan.Request()
 
-        # Create service client for motion sequence
-        self._motion_sequence_path_service = self._node.create_client(
-            srv_type=GetMotionSequence,
-            srv_name="plan_motion_sequence",
-            qos_profile=QoSProfile(
-                durability=QoSDurabilityPolicy.VOLATILE,
-                reliability=QoSReliabilityPolicy.RELIABLE,
-                history=QoSHistoryPolicy.KEEP_LAST,
-                depth=1,
-            ),
-            callback_group=callback_group,
-        )
-        self.__sequence_path_request = GetMotionSequence.Request()
-
         # Create a separate service client for Cartesian planning
         self._plan_cartesian_path_service = self._node.create_client(
             srv_type=GetCartesianPath,
@@ -246,6 +273,46 @@ class MoveIt2:
             callback_group=self._callback_group,
         )
 
+        # Create action client for sequence execution
+        self._sequence_move_grop_action_client = ActionClient(
+            node=self._node,
+            action_type=MoveGroupSequence,
+            action_name="sequence_move_group",
+            goal_service_qos_profile=QoSProfile(
+                durability=QoSDurabilityPolicy.VOLATILE,
+                reliability=QoSReliabilityPolicy.RELIABLE,
+                history=QoSHistoryPolicy.KEEP_LAST,
+                depth=1,
+            ),
+            result_service_qos_profile=QoSProfile(
+                durability=QoSDurabilityPolicy.VOLATILE,
+                reliability=QoSReliabilityPolicy.RELIABLE,
+                history=QoSHistoryPolicy.KEEP_LAST,
+                depth=5,
+            ),
+            cancel_service_qos_profile=QoSProfile(
+                durability=QoSDurabilityPolicy.VOLATILE,
+                reliability=QoSReliabilityPolicy.RELIABLE,
+                history=QoSHistoryPolicy.KEEP_LAST,
+                depth=5,
+            ),
+            feedback_sub_qos_profile=QoSProfile(
+                durability=QoSDurabilityPolicy.VOLATILE,
+                reliability=QoSReliabilityPolicy.BEST_EFFORT,
+                history=QoSHistoryPolicy.KEEP_LAST,
+                depth=1,
+            ),
+            status_sub_qos_profile=QoSProfile(
+                durability=QoSDurabilityPolicy.VOLATILE,
+                reliability=QoSReliabilityPolicy.BEST_EFFORT,
+                history=QoSHistoryPolicy.KEEP_LAST,
+                depth=1,
+            ),
+            callback_group=self._callback_group,
+        )
+
+        self._sequence_trajectory = None
+
         # Create a service for getting the planning scene
         self._get_planning_scene_service = self._node.create_client(
             srv_type=GetPlanningScene,
@@ -274,48 +341,6 @@ class MoveIt2:
             ),
             callback_group=callback_group,
         )
-
-        self.__collision_object_publisher = self._node.create_publisher(CollisionObject, "/collision_object", 10)
-        self.__attached_collision_object_publisher = self._node.create_publisher(
-            AttachedCollisionObject, "/attached_collision_object", 10
-        )
-
-        self.__cancellation_pub = self._node.create_publisher(String, "/trajectory_execution_event", 1)
-
-        self.__joint_state_mutex = threading.Lock()
-        self.__joint_state = None
-        self.__new_joint_state_available = False
-        self.__move_action_goal = self.__init_move_action_goal(
-            frame_id=base_link_name,
-            group_name=group_name,
-            end_effector=end_effector_name,
-        )
-
-        # Flag to determine whether to execute trajectories via Move Group Action, or rather by calling
-        # the separate ExecuteTrajectory action
-        # Applies to `move_to_pose()` and `move_to_configuration()`
-        self.__use_move_group_action = use_move_group_action
-
-        # Flag that determines whether a new goal can be sent while the previous one is being executed
-        self.__ignore_new_calls_while_executing = ignore_new_calls_while_executing
-
-        # Store additional variables for later use
-        self.__joint_names = joint_names
-        self.__base_link_name = base_link_name
-        self.__end_effector_name = end_effector_name
-        self.__group_name = group_name
-
-        # Internal states that monitor the current motion requests and execution
-        self.__is_motion_requested = False
-        self.__is_executing = False
-        self.motion_suceeded = False
-        self.__execution_goal_handle = None
-        self.__last_error_code = None
-        self.__wait_until_executed_rate = self._node.create_rate(1000.0)
-        self.__execution_mutex = threading.Lock()
-
-        # Event that enables waiting until async future is done
-        self.__future_done_event = threading.Event()
 
     #### Execution Polling Functions
     def query_state(self) -> MoveIt2State:
@@ -421,23 +446,10 @@ class MoveIt2:
             self.clear_goal_constraints()
             self.clear_path_constraints()
 
+            return None
+
         else:
             # Plan via MoveIt 2 and then execute directly with the controller
-            # self.execute(
-            #     self.plan(
-            #         position=pose_stamped.pose.position,
-            #         quat_xyzw=pose_stamped.pose.orientation,
-            #         frame_id=pose_stamped.header.frame_id,
-            #         target_link=target_link,
-            #         tolerance_position=tolerance_position,
-            #         tolerance_orientation=tolerance_orientation,
-            #         weight_position=weight_position,
-            #         weight_orientation=weight_orientation,
-            #         cartesian=cartesian,
-            #         max_step=cartesian_max_step,
-            #         cartesian_fraction_threshold=cartesian_fraction_threshold,
-            #     )
-            # )
             return self.plan(
                 position=pose_stamped.pose.position,
                 quat_xyzw=pose_stamped.pose.orientation,
@@ -484,6 +496,7 @@ class MoveIt2:
             # Clear all previous goal constrains
             self.clear_goal_constraints()
             self.clear_path_constraints()
+            return None
 
         else:
             # Plan via MoveIt 2 and then execute directly with the controller
@@ -493,6 +506,69 @@ class MoveIt2:
                 tolerance_joint_position=tolerance,
                 weight_joint_position=weight,
             )
+
+    def move_sequence_async(
+        self,
+        poses: List[Pose] = None,
+        blend_radius: List[float] = None,
+        planner_ids: List[str] = None,
+        pipeline_id: str = None,
+    ):
+        """
+        Plan and execute a sequence of poses.
+        """
+        self._sequence_trajectory = None
+
+        if poses is None:
+            self._node.get_logger().warn("No poses provided for sequence.")
+            return
+
+        if blend_radius is None:
+            blend_radius = [0.1] * len(poses)
+            self._node.get_logger().warn("No blend radii provided for sequence. Using default value 0.1.")
+
+        if planner_ids is None:
+            self._node.get_logger().warn("No planner IDs provided for sequence.")
+
+        goal = MoveGroupSequence.Goal()
+        for pose, radius, planner_id in zip(poses, blend_radius, planner_ids):
+            goal.request.items.append(
+                MotionSequenceItem(
+                    blend_radius=radius,
+                    req=self.construct_motion_plan_request(
+                        target_pose=pose,
+                        pipeline_id=pipeline_id,
+                        planner_id=planner_id,
+                    ),
+                )
+            )
+        goal.request.items[-1].blend_radius = 0.0
+        goal.planning_options.plan_only = self.__move_action_goal.planning_options.plan_only
+
+        self._node.get_logger().info("Sending plan request to action server...")
+        send_goal_future = self._sequence_move_grop_action_client.send_goal_async(goal)
+
+        rclpy.spin_until_future_complete(self._node, send_goal_future)
+        goal_handle = send_goal_future.result()
+        result_future = goal_handle.get_result_async()
+
+        # Handle result
+        rclpy.spin_until_future_complete(self._node, result_future)
+        result = result_future.result()
+        if result.status != GoalStatus.STATUS_SUCCEEDED:
+            self._node.get_logger().warn(
+                f"Action '{self._plan_sequence_action_client._action_name}' failed with error code: {result.result.error_code.val}."
+            )
+            return None
+
+        # Return the planned trajectory
+        self._node.get_logger().info("Planning successful. Returning trajectory.")
+        return result.result.response.planned_trajectories[0]
+
+        # send_goal_future = self._sequence_move_grop_action_client.send_goal_async(goal)
+        # send_goal_future.add_done_callback(self.__response_callback_plan_sequence)
+
+        # return self._sequence_trajectory
 
     def plan(
         self,
@@ -534,32 +610,6 @@ class MoveIt2:
             cartesian=cartesian,
             cartesian_fraction_threshold=cartesian_fraction_threshold,
         )
-
-    def plan_sequence(
-        self,
-        poses: Optional[List[Union[PoseStamped, Pose]]] = None,
-        frame_id: Optional[str] = None,
-        target_link: Optional[str] = None,
-        tolerance_position: float = 0.001,
-        tolerance_orientation: Union[float, Tuple[float, float, float]] = 0.001,
-        weight_position: float = 1.0,
-        weight_orientation: float = 1.0,
-        blends: Optional[List[float]] = None,
-    ) -> Optional[List[JointTrajectory]]:
-        """
-        Call plan_sequence_async and wait on future
-        """
-        future = self.plan_sequence_async(**{key: value for key, value in locals().items() if key not in ["self"]})
-
-        if future is None:
-            return None
-
-        # 100ms sleep
-        rate = self._node.create_rate(10)
-        while not future.done():
-            rate.sleep()
-
-        return self.get_trajectory_from_sequence(future)
 
     def plan_async(
         self,
@@ -681,102 +731,6 @@ class MoveIt2:
 
         return future
 
-    def plan_sequence_async(
-        self,
-        poses: Optional[List[Union[PoseStamped, Pose]]] = None,
-        frame_id: Optional[str] = None,
-        target_link: Optional[str] = None,
-        tolerance_position: float = 0.001,
-        tolerance_orientation: Union[float, Tuple[float, float, float]] = 0.001,
-        weight_position: float = 1.0,
-        weight_orientation: float = 1.0,
-        blends: Optional[List[float]] = None,
-    ) -> Optional[Future]:
-        """
-        Plan motion for a sequence of goals. This includes sequential positions, orientations,
-        or joint configurations. If no trajectory is found within the timeout duration,
-        `None` is returned.
-
-        Args:
-            poses: List of target poses for the end-effector.
-            positions: List of target positions as Points or tuples.
-            quats_xyzw: List of target orientations as Quaternions or xyzw tuples.
-            joint_positions_list: List of joint positions for each step in the sequence.
-            joint_names_list: List of joint names corresponding to each joint position set.
-            frame_id: Frame of reference for the target poses.
-            target_link: Link to be targeted during motion planning.
-            tolerance_position: Allowable position error.
-            tolerance_orientation: Allowable orientation error.
-            tolerance_joint_position: Allowable joint position error.
-            weight_position: Weight for position goals in planning.
-            weight_orientation: Weight for orientation goals in planning.
-            weight_joint_position: Weight for joint position goals in planning.
-            start_joint_state: Starting joint configuration.
-
-
-        Returns:
-            Future object representing the planning result.
-        """
-
-        pose_stamped_list = []
-        if poses is not None:
-            for pose in poses:
-                if isinstance(pose, PoseStamped):
-                    pose_stamped_list.append(pose)
-                elif isinstance(pose, Pose):
-                    pose_stamped_list.append(
-                        PoseStamped(
-                            header=Header(
-                                stamp=self._node.get_clock().now().to_msg(),
-                                frame_id=(frame_id if frame_id is not None else self.__base_link_name),
-                            ),
-                            pose=pose,
-                        )
-                    )
-                else:
-                    self._node.get_logger().warn("Invalid pose type in the sequence.")
-
-            motion_sequence_request = MotionSequenceRequest()
-            motion_sequence_item = MotionSequenceItem()
-
-            for pose_stamped, blend in zip(pose_stamped_list, blends):
-
-                self.set_position_goal(
-                    position=pose_stamped.pose.position,
-                    frame_id=pose_stamped.header.frame_id,
-                    target_link=target_link,
-                    tolerance=tolerance_position,
-                    weight=weight_position,
-                )
-                self.set_orientation_goal(
-                    quat_xyzw=pose_stamped.pose.orientation,
-                    frame_id=pose_stamped.header.frame_id,
-                    target_link=target_link,
-                    tolerance=tolerance_orientation,
-                    weight=weight_orientation,
-                )
-
-                req = self._construct_motion_plan_request()
-                req.start_state.joint_state = self.joint_state
-                motion_sequence_item.req = req
-                motion_sequence_item.blend_radius = blend
-                motion_sequence_request.items.append(motion_sequence_item)
-
-        # Plan trajectory asynchronously by service call
-        self.__sequence_path_request.request = motion_sequence_request
-
-        self._node.get_logger().info(f"number of items in sequence: {len(motion_sequence_request.items)}")
-        for idx, item in enumerate(motion_sequence_request.items):
-            self._node.get_logger().info(f"item {idx} blend radius: {item.blend_radius}")
-            self._node.get_logger().info(f"item {idx} request: {item.req}")
-
-        future = self._plan_sequence_kinematic_path(self.__sequence_path_request)
-
-        self.clear_goal_constraints()
-        self.clear_path_constraints()
-
-        return future
-
     def get_trajectory(
         self,
         future: Future,
@@ -819,40 +773,21 @@ class MoveIt2:
             self._node.get_logger().warn(f"Planning failed! Error code: {res.error_code.val}.")
             return None
 
-    def get_trajectory_from_sequence(
-        self,
-        future: Future,
-        cartesian: bool = False,
-        cartesian_fraction_threshold: float = 0.0,
-    ) -> Optional[List[JointTrajectory]]:
-        """
-        Takes in a future returned by plan_sequence and returns the trajectory if the future is done
-        and planning was successful, else None.
-
-        For cartesian plans, the plan is rejected if the fraction of the path that was completed is
-        less than `cartesian_fraction_threshold`.
-        """
-        if not future.done():
-            self._node.get_logger().warn("Cannot get trajectory because future is not done.")
-            return None
-
-        res = future.result()
-
-        # Else Kinematic
-        res = res.response
-        if MoveItErrorCodes.SUCCESS == res.error_code.val:
-            return res.plan.joint_trajectory[0].joint_trajectory
-        else:
-            self._node.get_logger().warn(f"Planning failed! Error code: {res.error_code.val}.")
-            return None
-
-    def execute(self, joint_trajectory: JointTrajectory):
+    def execute(self, trajectory):
         """
         Execute joint_trajectory by communicating directly with the controller.
         """
 
         if self.__ignore_new_calls_while_executing and (self.__is_motion_requested or self.__is_executing):
             self._node.get_logger().warn("Controller is already following a trajectory. Skipping motion.")
+            return
+
+        if isinstance(trajectory, JointTrajectory):
+            joint_trajectory = trajectory
+        elif isinstance(trajectory, RobotTrajectory):
+            joint_trajectory = trajectory.joint_trajectory
+        else:
+            self._node.get_logger().warn("Invalid trajectory provided for execution.")
             return
 
         execute_trajectory_goal = init_execute_trajectory_goal(joint_trajectory=joint_trajectory)
@@ -874,6 +809,7 @@ class MoveIt2:
 
         while self.__is_motion_requested or self.__is_executing:
             self.__wait_until_executed_rate.sleep()
+            # print(self.__is_motion_requested, self.__is_executing)
 
         return self.motion_suceeded
 
@@ -895,6 +831,50 @@ class MoveIt2:
             goal=execute_trajectory_goal,
             wait_until_response=sync,
         )
+
+    def construct_motion_plan_request(self, target_pose: Pose, pipeline_id: str, planner_id: str) -> MotionPlanRequest:
+        """
+        Construct a MotionPlanRequest object with the necessary attributes.
+        """
+        req = MotionPlanRequest()
+        req.workspace_parameters = self.__move_action_goal.request.workspace_parameters
+        req.group_name = self.__move_action_goal.request.group_name
+        req.num_planning_attempts = self.__move_action_goal.request.num_planning_attempts
+        req.allowed_planning_time = self.__move_action_goal.request.allowed_planning_time
+        req.max_velocity_scaling_factor = self.__move_action_goal.request.max_velocity_scaling_factor
+        req.max_acceleration_scaling_factor = self.__move_action_goal.request.max_acceleration_scaling_factor
+        req.pipeline_id = pipeline_id
+        req.planner_id = planner_id
+
+        # Convert to PoseStamped
+        if isinstance(target_pose, Pose):
+            target_pose = PoseStamped(
+                header=Header(
+                    stamp=self._node.get_clock().now().to_msg(),
+                    frame_id=self.__base_link_name,
+                ),
+                pose=target_pose,
+            )
+
+        req.goal_constraints.append(
+            Constraints(
+                position_constraints=[
+                    self.create_position_constraint(
+                        position=target_pose.pose.position,
+                        frame_id=target_pose.header.frame_id,
+                        target_link=self.__end_effector_name,
+                    )
+                ],
+                orientation_constraints=[
+                    self.create_orientation_constraint(
+                        quat_xyzw=target_pose.pose.orientation,
+                        frame_id=target_pose.header.frame_id,
+                        target_link=self.__end_effector_name,
+                    )
+                ],
+            )
+        )
+        return req
 
     def set_pose_goal(
         self,
@@ -1397,6 +1377,7 @@ class MoveIt2:
         constraints: Optional[Constraints] = None,
         wait_for_server_timeout_sec: Optional[float] = 1.0,
     ) -> Optional[Future]:
+        
         """
         Compute inverse kinematics for the given pose. To indicate beginning of the search space,
         `start_joint_state` can be specified. Furthermore, `constraints` can be imposed on the
@@ -1718,7 +1699,7 @@ class MoveIt2:
         if not (scale[0] == scale[1] == scale[2] == 1.0):
             # If the mesh was passed in as a parameter, make a copy of it to
             # avoid transforming the original.
-            if filepath is not None:
+            if filepath is None:
                 mesh = mesh.copy()
             # Transform the mesh
             transform = np.eye(4)
@@ -1959,11 +1940,10 @@ class MoveIt2:
         self.__new_joint_state_available = True
         self.__joint_state_mutex.release()
 
-    def _construct_motion_plan_request(self):
-        """
-        Construct a MotionPlanRequest object with the necessary attributes.
-        """
+    def _plan_kinematic_path(self) -> Optional[Future]:
+        # Reuse request from move action goal
         self.__kinematic_path_request.motion_plan_request = self.__move_action_goal.request
+
         stamp = self._node.get_clock().now().to_msg()
         self.__kinematic_path_request.motion_plan_request.workspace_parameters.header.stamp = stamp
         for constraints in self.__kinematic_path_request.motion_plan_request.goal_constraints:
@@ -1972,11 +1952,6 @@ class MoveIt2:
             for orientation_constraint in constraints.orientation_constraints:
                 orientation_constraint.header.stamp = stamp
 
-        return self.__kinematic_path_request.motion_plan_request
-
-    def _plan_kinematic_path(self) -> Optional[Future]:
-        self._construct_motion_plan_request()
-
         if not self._plan_kinematic_path_service.service_is_ready():
             self._node.get_logger().warn(
                 f"Service '{self._plan_kinematic_path_service.srv_name}' is not yet available. Better luck next time!"
@@ -1984,14 +1959,6 @@ class MoveIt2:
             return None
 
         return self._plan_kinematic_path_service.call_async(self.__kinematic_path_request)
-
-    def _plan_sequence_kinematic_path(self, motion_sequence_request) -> Optional[Future]:
-        if not self._plan_kinematic_path_service.service_is_ready():
-            self._node.get_logger().warn(
-                f"Service '{self._plan_kinematic_path_service.srv_name}' is not yet available. Better luck next time!"
-            )
-            return None
-        return self._motion_sequence_path_service.call_async(motion_sequence_request)
 
     def _plan_cartesian_path(
         self,
@@ -2076,7 +2043,7 @@ class MoveIt2:
             self._node.get_logger().warn(f"Action '{self.__move_action_client._action_name}' was rejected.")
             self.__is_motion_requested = False
             return
-
+        self._node.get_logger().info(f"Action '{self.__move_action_client._action_name}' was accepted.")
         self.__execution_goal_handle = goal_handle
         self.__is_executing = True
         self.__is_motion_requested = False
@@ -2124,6 +2091,25 @@ class MoveIt2:
         self.__send_goal_future_execute_trajectory.add_done_callback(self.__response_callback_execute_trajectory)
         self.__execution_mutex.release()
 
+    def __response_callback_plan_sequence(self, response):
+        self.__execution_mutex.acquire()
+        try:
+            goal_handle = response.result()
+            if not goal_handle.accepted:
+                self._node.get_logger().warn(f"Action '{self._plan_sequence_action_client._action_name}' was rejected.")
+                self.motion_suceeded = False
+                return
+
+            # Store goal handle and start execution
+            self.__execution_goal_handle = goal_handle
+            self.__is_executing = True
+
+            # Add result callback
+            result_future = goal_handle.get_result_async()
+            result_future.add_done_callback(self.__result_callback_plan_sequence)
+        finally:
+            self.__execution_mutex.release()
+
     def __response_callback_execute_trajectory(self, response):
         self.__execution_mutex.acquire()
         goal_handle = response.result()
@@ -2144,6 +2130,26 @@ class MoveIt2:
 
     def __response_callback_with_event_set_execute_trajectory(self, response):
         self.__future_done_event.set()
+
+    def __result_callback_plan_sequence(self, res):
+        self.__execution_mutex.acquire()
+        try:
+            # Process the result of the action
+            result = res.result()
+            if result.status != GoalStatus.STATUS_SUCCEEDED:
+                self._node.get_logger().warn(
+                    f"Action '{self._plan_sequence_action_client._action_name}' was unsuccessful: {result.result.error_code.val}."
+                )
+                self.motion_suceeded = False
+                self.__last_error_code = result.result.error_code.val
+            else:
+                self._node.get_logger().info("Action plan sequence was successful.")
+                self.motion_suceeded = True
+                self.__execution_goal_handle = None
+                self.__is_executing = False
+                self._sequence_trajectory = result.result.response.planned_trajectories
+        finally:
+            self.__execution_mutex.release()
 
     def __result_callback_execute_trajectory(self, res):
         self.__execution_mutex.acquire()
@@ -2180,8 +2186,8 @@ class MoveIt2:
         move_action_goal.request.pipeline_id = ""
         move_action_goal.request.planner_id = ""
         move_action_goal.request.group_name = group_name
-        move_action_goal.request.num_planning_attempts = 5
-        move_action_goal.request.allowed_planning_time = 2.0
+        move_action_goal.request.num_planning_attempts = 20
+        move_action_goal.request.allowed_planning_time = 10.0
         move_action_goal.request.max_velocity_scaling_factor = 0.0
         move_action_goal.request.max_acceleration_scaling_factor = 0.0
         # Note: Attribute was renamed in Iron (https://github.com/ros-planning/moveit_msgs/pull/130)
@@ -2192,7 +2198,7 @@ class MoveIt2:
         move_action_goal.request.max_cartesian_speed = 0.0
 
         # move_action_goal.planning_options.planning_scene_diff = "Ignored"
-        move_action_goal.planning_options.plan_only = False
+        move_action_goal.planning_options.plan_only = True
         # move_action_goal.planning_options.look_around = "Ignored"
         # move_action_goal.planning_options.look_around_attempts = "Ignored"
         # move_action_goal.planning_options.max_safe_execution_cost = "Ignored"
